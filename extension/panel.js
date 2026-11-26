@@ -80,6 +80,26 @@ async function refresh() {
   }
 }
 
+async function capturePermissions() {
+  const auddOrigin = await browser.permissions.contains(AUDD);
+  let clipConsent;
+  try { clipConsent = await browser.permissions.contains(CLIP); }
+  catch { clipConsent = null; }
+  return {auddOrigin, clipConsent};
+}
+async function updateRecognitionSettings() {
+  const {auddOrigin,clipConsent} = await capturePermissions();
+  const button = $("recognitionPermission");
+  button.hidden = !state.config.hasRecognition || clipConsent === null || (auddOrigin && clipConsent);
+  button.textContent = auddOrigin ? "Allow audio sharing" : "Allow AudD access";
+  $("recognitionStatus").textContent = !state.config.hasRecognition ? "Save your AudD token to start setup."
+    : clipConsent === null ? "This Firefox build doesn’t expose the audio-sharing consent control."
+    : !auddOrigin ? "Step 1 of 2: Allow the extension to contact AudD."
+    : !clipConsent ? "Step 2 of 2: Allow the extension to send a clip to AudD only when you click Identify this tab."
+    : "Ready. Return to a playing tab and click Identify this tab.";
+  return {auddOrigin,clipConsent};
+}
+
 function recordPlayer() {
   return new Promise(resolve => {
     const playing = [...document.querySelectorAll("video,audio")].filter(x => !x.paused && !x.ended && x.readyState >= 2);
@@ -149,7 +169,15 @@ if (settings) {
     $("auddToken").value = "";
     $("forgetAudD").checked = false;
     await refresh();
+    await updateRecognitionSettings();
     note("Settings saved.");
+  });
+  bind("recognitionPermission", async () => {
+    const clip = $("recognitionPermission").textContent === "Allow audio sharing";
+    note("Waiting for Firefox’s permission prompt. Choose Allow to continue.");
+    const allowed = await browser.permissions.request(clip ? CLIP : AUDD);
+    await updateRecognitionSettings();
+    note(allowed ? "" : "Permission wasn’t granted. You can try again here.");
   });
   bind("connect", async () => {
     const apiKey = $("apiKey").value.trim(), secret = $("secret").value.trim();
@@ -167,11 +195,13 @@ if (settings) {
     $("profiles").value = state.config.profiles.map(profileUrl).join("\n");
     $("limit").value = state.config.limit;
     state.config.mappings.forEach(mappingRow);
+    return updateRecognitionSettings();
   }).catch(e => note(e.message));
 } else {
   document.body.classList.add("popup");
   $("actions").hidden = false;
   bind("settings",() => browser.runtime.openOptionsPage());
+  bind("recognitionSettings",() => browser.runtime.openOptionsPage());
   $("profile").addEventListener("change",() => {
     $("list").replaceChildren(); $("copy").hidden = true; previewRows = [];
   });
@@ -202,16 +232,17 @@ if (settings) {
   });
   bind("identify", async () => {
     $("match").replaceChildren(); $("scrobble").hidden = true; match = null;
-    // Consent prompts close a Firefox toolbar popup. Grant each once, then reopen.
-    if (!state?.config.hasRecognition) throw Error("Save an AudD token in Settings first.");
-    if (state.clipConsent === null) throw Error("This Firefox build does not expose the audio-sharing consent control.");
-    if (!state.auddOrigin || !state.clipConsent) {
-      const needed = !state.auddOrigin ? AUDD : CLIP;
-      const allowed = await browser.permissions.request(needed);
-      await updateCapturePermissions();
-      note(allowed ? "Permission granted. Click Identify this tab again." : "Permission wasn’t granted.");
-      return;
+    if (!state?.config.hasRecognition) {
+      $("recognitionSettings").hidden = false;
+      throw Error("Open Set up AudD, save your token, and grant both permissions in Settings.");
     }
+    const {auddOrigin,clipConsent} = await capturePermissions();
+    if (!auddOrigin || !clipConsent) {
+      $("recognitionSettings").hidden = false;
+      throw Error(clipConsent === null ? "This Firefox build doesn’t expose the audio-sharing consent control."
+        : "Open Set up AudD and grant the missing permission in Settings.");
+    }
+    $("recognitionSettings").hidden = true;
     const [tab] = await browser.tabs.query({active:true,currentWindow:true});
     if (!tab?.id) throw Error("No active browser tab.");
     const started = Math.floor(Date.now()/1000);
@@ -239,10 +270,5 @@ if (settings) {
     note("Match found. Review before scrobbling.");
   });
   bind("scrobble",async () => { if (match) printReport(await call("submit",{rows:[match]})); });
-  async function updateCapturePermissions() {
-    state.auddOrigin = await browser.permissions.contains(AUDD);
-    try { state.clipConsent = await browser.permissions.contains(CLIP); }
-    catch { state.clipConsent = null; }
-  }
-  refresh().then(updateCapturePermissions).catch(e => note(e.message));
+  refresh().catch(e => note(e.message));
 }

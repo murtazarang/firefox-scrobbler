@@ -19,6 +19,7 @@
   <section><h2>Identify audio</h2>
     <p class="hint">Only on click: capture 10 seconds of the current player and send the clip to AudD.</p>
     <button id="identify">Identify this tab</button>
+    <button id="recognitionSettings" type="button" hidden>Set up AudD</button>
     <div id="match"></div><button id="scrobble" class="primary" hidden>Scrobble match</button>
   </section>
 </main>
@@ -50,6 +51,8 @@
     <p class="hint"><a href="https://dashboard.audd.io/" target="_blank" rel="noopener noreferrer">Get an AudD token</a>. A capture goes to AudD only when you ask to identify the tab. AudD is a hosted service with a free trial, not an unlimited free tier.</p>
     <label for="auddToken">AudD token</label><input id="auddToken" type="password" autocomplete="off" spellcheck="false">
     <label class="check"><input id="forgetAudD" type="checkbox"> Remove saved AudD token</label>
+    <p id="recognitionStatus" class="hint" role="status"></p>
+    <button id="recognitionPermission" type="button" hidden>Allow AudD access</button>
   </section>
   <button id="save" class="primary">Save settings</button>
 </main>
