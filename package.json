@@ -1,6 +1,6 @@
 {
-  "name": "firefox-scrobbler",
-  "version": "0.1.3",
+  "name": "stream-scrobbler",
+  "version": "0.1.4",
   "private": true,
   "scripts": {"test":"node --test test/*.test.cjs"}
 }
