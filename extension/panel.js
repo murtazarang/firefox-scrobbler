@@ -230,7 +230,7 @@ if (settings) {
     const report = await call("submit",{rows,source:previewSource});
     printReport(report);
   });
-  bind("identify", async () => {
+  async function identifyTrack(autoScrobble) {
     $("match").replaceChildren(); $("scrobble").hidden = true; match = null;
     if (!state?.config.hasRecognition) {
       $("recognitionSettings").hidden = false;
@@ -243,6 +243,8 @@ if (settings) {
         : "Open Set up AudD and grant the missing permission in Settings.");
     }
     $("recognitionSettings").hidden = true;
+    if (autoScrobble && !(await call("status")).account)
+      throw Error("Connect your Last.fm account in Settings first.");
     const [tab] = await browser.tabs.query({active:true,currentWindow:true});
     if (!tab?.id) throw Error("No active browser tab.");
     const started = Math.floor(Date.now()/1000);
@@ -260,15 +262,32 @@ if (settings) {
     const format = clip.type.includes("ogg") ? "ogg" : "webm";
     body.set("api_token",config.auddToken);
     body.set("file", new Blob([Uint8Array.from(atob(clip.data),x => x.charCodeAt(0))],{type:clip.type}),"sample."+format);
+    note("Checking the clip with AudD…");
     const response = await fetch("https://api.audd.io/",{method:"POST",body,credentials:"omit",redirect:"error",signal:AbortSignal.timeout(20000)}).catch(() => { throw Error("Could not reach AudD."); });
     const x = await response.json().catch(() => null);
     if (!response.ok || x?.status !== "success") throw Error("AudD could not identify the clip. Check your token and quota.");
-    if (!x.result?.artist || !x.result?.title) return note("No match found.");
+    if (!x.result?.artist || !x.result?.title)
+      return note(autoScrobble ? "No match found. Nothing was scrobbled." : "No match found.");
     match = {artist:x.result.artist,title:x.result.title,album:x.result.album || "",ts:started};
     line($("match"),match.artist+" — "+match.title);
-    $("scrobble").hidden = false;
-    note("Match found. Review before scrobbling.");
-  });
+    if (autoScrobble) {
+      note("Match found. Sending to Last.fm…");
+      printReport(await call("submit",{rows:[match]}));
+    } else {
+      $("scrobble").hidden = false;
+      note("Match found. Review before scrobbling.");
+    }
+  }
+  for (const [id,other,auto] of [
+    ["identify","identifyAndScrobble",false],
+    ["identifyAndScrobble","identify",true]
+  ]) {
+    bind(id, async () => {
+      $(other).disabled = true;
+      try { await identifyTrack(auto); }
+      finally { $(other).disabled = false; }
+    });
+  }
   bind("scrobble",async () => { if (match) printReport(await call("submit",{rows:[match]})); });
   refresh().catch(e => note(e.message));
 }

@@ -18,8 +18,11 @@
   <section><h2>Twitch mirroring</h2><p id="mirror">No mapped channels open.</p></section>
   <section><h2>Identify audio</h2>
     <p class="hint">Only on click: capture 10 seconds of the current player and send the clip to AudD.</p>
-    <button id="identify">Identify this tab</button>
-    <button id="recognitionSettings" type="button" hidden>Set up AudD</button>
+    <div class="buttons">
+      <button id="identify">Identify this tab</button>
+      <button id="identifyAndScrobble" class="primary">Identify &amp; scrobble</button>
+      <button id="recognitionSettings" type="button" hidden>Set up AudD</button>
+    </div>
     <div id="match"></div><button id="scrobble" class="primary" hidden>Scrobble match</button>
   </section>
 </main>

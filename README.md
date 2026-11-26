@@ -6,7 +6,7 @@ A desktop Firefox extension for three separate ways to scrobble to your Last.fm 
 | --- | --- | --- |
 | Copy Last.fm plays | After you choose a profile, select plays and click **Scrobble selected** | The source profile's public Recent Tracks feed |
 | Twitch mirroring | In the background while a mapped channel page is open | The paired Last.fm profile's new completed plays; Twitch tab focus, mute, pause, and playback state do not matter |
-| Identify this tab | Only when you click **Identify this tab**, then confirm the match to submit it | A short clip of the active tab's media player, sent to AudD |
+| Identify this tab | Only on click: **Identify this tab** previews a match; **Identify & scrobble** submits it directly | A short clip of the active tab's media player, sent to AudD |
 
 ## Try the extension
 
@@ -14,7 +14,7 @@ A desktop Firefox extension for three separate ways to scrobble to your Last.fm 
 2. Open the toolbar popup and click **Settings**. Open [My Last.fm API accounts](https://www.last.fm/api/accounts) and select your app or [register a new API application](https://www.last.fm/api/account/create). Copy the API key and shared secret from the same application page into Settings, then click **Connect Last.fm** to save them and open Last.fm for approval. The shared secret is not your Last.fm password.
 3. Approve access on Last.fm, return to Settings, and click **Finish connecting**. Last.fm can reuse its own website login if you already signed in; the extension never reads cookies or asks for your password. **Disconnect** clears the local session; you can revoke the authorization separately in Last.fm's account settings.
 4. Add the Last.fm profile links and set a history limit (1–1,000 completed plays; Now Playing is displayed separately). To mirror a Twitch channel, add its exact channel URL and its matching Last.fm profile, enable the mapping and save. Firefox asks for Twitch host access when you enable your first mapping.
-5. For recognition, save your own [AudD token](https://dashboard.audd.io/). In the Settings tab, click **Allow AudD access**, then **Allow audio sharing**. When Settings says **Ready**, return to the media tab. Start a media player in the active tab, then click **Identify this tab** and keep the popup open during the capture. Confirm the match before scrobbling. AudD has a trial, not an unlimited free plan.
+5. For recognition, save your own [AudD token](https://dashboard.audd.io/). In the Settings tab, click **Allow AudD access**, then **Allow audio sharing**. When Settings says **Ready**, return to the media tab. Start a media player in the active tab, then click **Identify this tab** and keep the popup open during the capture. Use **Scrobble match** after previewing, or click **Identify & scrobble** from the start to submit the first match without a separate confirmation. Keep the popup open until it reports the result. AudD has a trial, not an unlimited free plan.
 
 Temporary installation lasts until Firefox restarts. For a permanent install on Firefox Release, submit the extension for Mozilla signing; a locally packed ZIP or XPI is unsigned. No add-on has been submitted to Mozilla or published on AMO.
 
