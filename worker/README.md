@@ -4,36 +4,23 @@ This is a Worker and one D1 database, not a Pages app. The Firefox build on this
 
 ## One-time Cloudflare setup
 
-From this directory, using a current Node.js and Wrangler:
+1. In Cloudflare, verify the existing `stream-scrobbler` Worker is protected by **All traffic** Access. In **Manage Account → Account API Tokens**, create a short-lived custom token with only:
+   - **Individual Workers → Editor**, for `stream-scrobbler` only.
+   - **D1 → Edit** (also called **D1 Write**) for this Cloudflare account, to create the database and apply its migration.
 
-```sh
-npx wrangler login
-npx wrangler d1 create stream-scrobbler
-```
+   Do not authorize Wrangler's browser OAuth or grant DNS, Billing, Cache, Access, or other Developer Platform permissions. Save your account ID (the 32-character ID in the dashboard URL) and have the [Last.fm application key and its shared secret](https://www.last.fm/api/accounts) ready. No production values go in GitHub or chat.
 
-Use the Cloudflare account that owns the existing Worker. Run `d1 create` only once. If Wrangler offers to edit your config, keep the provided `wrangler.jsonc` and replace only `REPLACE_WITH_D1_DATABASE_ID` with the database ID from the command output. The database ID is not a secret. No production database ID is included here.
+2. In an interactive Bash terminal with **Node.js 24+ and npm**, run this from the repository root:
 
-```sh
-npx wrangler d1 migrations apply stream-scrobbler --remote
-```
+   ```bash
+   bash worker/setup.sh
+   ```
 
-In your existing Worker's **Settings → Variables and Secrets**, add these as type **Secret** and save/deploy the settings:
+   The script asks for the account ID and scoped token (hidden), checks the existing Worker, and asks for confirmation before making changes. It reuses or creates the `stream-scrobbler` D1 database, applies pending migrations, prompts for missing Last.fm credentials without echoing them, generates a session-encryption key if needed, and deploys to the existing Worker. It preserves existing secrets and never silently replaces an encryption key for a database with saved sessions. It stages configuration and any new secrets in a private temporary directory and removes it on exit; it does not modify the checkout. **All traffic** Access remains in place. If a setup step fails after creating D1, rerun setup rather than creating another database.
 
-| Name | Value |
-| --- | --- |
-| `LASTFM_API_KEY` | Dedicated [Last.fm application key](https://www.last.fm/api/accounts) |
-| `LASTFM_SHARED_SECRET` | Shared secret from the same Last.fm application |
-| `SESSION_ENCRYPTION_KEY` | A base64-encoded 32-byte random key, generated locally with `openssl rand -base64 32` |
+3. Open [the Worker health endpoint](https://stream-scrobbler.murtaza2142.workers.dev/health) and sign in through Cloudflare Access. Expect `{"ok":true}`. This checks reachability, not D1 or Last.fm authorization. Revoke the setup token in Cloudflare once finished; it is not needed at runtime. If you manually manage the Worker secrets later, do not rotate `SESSION_ENCRYPTION_KEY` casually: the current sessions need the original key to be readable.
 
-Keep the encryption key in your password manager. Replacing it without a migration makes existing sessions unreadable, so it requires clearing those sessions and reconnecting. Never paste real values into source, terminal arguments, GitHub, or chat. The app key is visible in Last.fm's authorization URL by design; the shared secret stays with the Worker.
-
-From this directory, deploy **to the existing Worker**, then open its `/health` URL in a normal browser and complete your Cloudflare Access sign-in. It should return `{"ok":true}`. This verifies the Worker responds, not that D1 or Last.fm authentication works.
-
-```sh
-npx wrangler deploy
-```
-
-[Cloudflare D1 commands](https://developers.cloudflare.com/d1/wrangler-commands/) · [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/) · [Deploy a Worker](https://developers.cloudflare.com/workers/get-started/guide/) · [Worker Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+[Granular Wrangler access](https://developers.cloudflare.com/workers/authorization/#use-granular-permissions-with-wrangler) · [Account token setup](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/) · [D1 commands](https://developers.cloudflare.com/d1/wrangler-commands/) · [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/) · [Worker Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
 
 ## Verification and release
 
