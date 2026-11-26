@@ -70,6 +70,8 @@ async function refresh() {
     $("secret").placeholder = state.config.hasKey ? "Saved" : "";
     $("auddToken").placeholder = state.config.hasRecognition ? "Saved" : "";
   } else {
+    $("settings").textContent = state.account ? "Settings" : "Set up Last.fm";
+    $("setupHint").hidden = Boolean(state.account);
     $("profile").replaceChildren(...state.config.profiles.map(user => new Option(user,user)));
     $("preview").disabled = !state.config.profiles.length;
     const {active, mirrorStatus: s} = state;
@@ -148,6 +150,15 @@ if (settings) {
     $("forgetAudD").checked = false;
     await refresh();
     note("Settings saved.");
+  });
+  bind("saveCredentials", async () => {
+    const apiKey = $("apiKey").value.trim(), secret = $("secret").value.trim();
+    if (!apiKey || !secret) throw Error("Paste both credentials from the same Last.fm API application.");
+    await call("save",{config:{apiKey,secret}});
+    $("apiKey").value = "";
+    $("secret").value = "";
+    await refresh();
+    note("Credentials saved. Click Connect Last.fm.");
   });
   bind("connect",async () => { await call("connect"); await refresh(); note("Approve on Last.fm, then return here and click Finish connecting."); });
   bind("finish",async () => { const account = await call("finish"); await refresh(); note("Connected as " + account + "."); });
