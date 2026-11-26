@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Firefox Scrobbler",
+  "version": "0.1.0",
+  "description": "Copy Last.fm plays, follow mapped Twitch channels, or identify a song on demand.",
+  "permissions": ["storage", "alarms", "activeTab", "scripting"],
+  "host_permissions": ["https://ws.audioscrobbler.com/*"],
+  "optional_host_permissions": ["https://www.twitch.tv/*", "https://twitch.tv/*", "https://api.audd.io/*"],
+  "background": {"scripts": ["core.js", "background.js"]},
+  "action": {"default_popup": "panel.html", "default_title": "Firefox Scrobbler"},
+  "options_ui": {"page": "panel.html?settings", "open_in_tab": true},
+  "incognito": "not_allowed",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "firefox-scrobbler@murtazarang.github.io",
+      "strict_min_version": "161.0",
+      "data_collection_permissions": {
+        "required": ["authenticationInfo", "personallyIdentifyingInfo", "websiteActivity"],
+        "optional": ["websiteContent"]
+      }
+    }
+  }
+}

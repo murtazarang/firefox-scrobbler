@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Firefox Scrobbler</title><link rel="stylesheet" href="panel.css">
+<script defer src="core.js"></script><script defer src="panel.js"></script></head>
+<body>
+<header><div><h1>Firefox Scrobbler</h1><p id="account">Loading account…</p></div><button id="settings" type="button">Settings</button></header>
+<p id="status" role="status" aria-live="polite"></p>
+<main id="actions" hidden>
+  <section><h2>Copy Last.fm plays</h2>
+    <label for="profile">Saved profile</label><select id="profile"></select>
+    <button id="preview">Load plays</button>
+    <p class="hint">Choose a current track or historical plays, then submit the selection.</p>
+    <div id="list"></div>
+    <button id="copy" class="primary" hidden>Scrobble selected</button>
+  </section>
+  <section><h2>Twitch mirroring</h2><p id="mirror">No mapped channels open.</p></section>
+  <section><h2>Identify audio</h2>
+    <p class="hint">Only on click: capture 10 seconds of the current player and send the clip to AudD.</p>
+    <button id="identify">Identify this tab</button>
+    <div id="match"></div><button id="scrobble" class="primary" hidden>Scrobble match</button>
+  </section>
+</main>
+<main id="options" hidden>
+  <section>
+    <h2>Last.fm account</h2>
+    <p class="hint">Create a private <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer">Last.fm API account</a>, enter both values, and save before connecting. Blank credential fields leave saved values unchanged.</p>
+    <label for="apiKey">API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false">
+    <label for="secret">Shared secret</label><input id="secret" type="password" autocomplete="off" spellcheck="false">
+    <div class="buttons"><button id="connect">Connect Last.fm</button><button id="finish">Finish connecting</button><button id="disconnect">Disconnect</button></div>
+  </section>
+  <section>
+    <h2>Manual copying</h2>
+    <label for="profiles">Last.fm profile links, one per line</label><textarea id="profiles" rows="3" placeholder="https://www.last.fm/user/example"></textarea>
+    <label for="limit">Historical plays to show (1–1000)</label><input id="limit" type="number" min="1" max="1000" step="1" value="50">
+  </section>
+  <section>
+    <h2>Automatic Twitch mappings</h2>
+    <p class="hint">Mirrors new Last.fm plays while the mapped channel page is open, even muted, paused, or in the background.</p>
+    <div id="mappings"></div><button id="addMapping" type="button">Add mapping</button>
+  </section>
+  <section>
+    <h2>On-demand recognition</h2>
+    <p class="hint"><a href="https://dashboard.audd.io/" target="_blank" rel="noopener noreferrer">Get an AudD token</a>. A capture goes to AudD only when you ask to identify the tab. AudD is a hosted service with a free trial, not an unlimited free tier.</p>
+    <label for="auddToken">AudD token</label><input id="auddToken" type="password" autocomplete="off" spellcheck="false">
+    <label class="check"><input id="forgetAudD" type="checkbox"> Remove saved AudD token</label>
+  </section>
+  <button id="save" class="primary">Save settings</button>
+</main>
+<footer><small>Recent plays provided by <a href="https://www.last.fm/" target="_blank" rel="noopener noreferrer">Last.fm</a>.</small></footer>
+</body></html>
