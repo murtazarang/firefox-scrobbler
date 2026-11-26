@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Stream Scrobbler",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Copy Last.fm plays, follow mapped Twitch channels, or identify a song on demand.",
   "permissions": ["storage", "alarms", "activeTab", "scripting"],
   "host_permissions": ["https://ws.audioscrobbler.com/*"],

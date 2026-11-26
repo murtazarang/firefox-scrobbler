@@ -31,8 +31,8 @@ function harness({feed, result, config = {}, disconnected = false} = {}) {
   const browser = {
     storage:{local,session}, alarms:{onAlarm:event(),get:k=>alarms.get(k),create:(k,v)=>alarms.set(k,v),clear:k=>alarms.delete(k)},
     runtime:{onStartup:event(),onInstalled:event(),onMessage:event(),getURL:p=>"moz-extension://test/"+p},
-    permissions:{contains:()=>enabled,onRemoved:event()},
-    tabs:{onUpdated:event(),onRemoved:event(),onCreated:event(),query:()=>tabs,create:x=>newTabs.push(x)}
+    permissions:{contains:({origins})=>Array.isArray(enabled) ? origins.every(o=>enabled.includes(o)) : enabled,onRemoved:event(),onAdded:event()},
+    tabs:{onUpdated:event(),onRemoved:event(),onCreated:event(),query:({url}={})=>url ? tabs.filter(t=>url.some(o=>t.url.startsWith(o.slice(0,-1)))) : tabs,create:x=>newTabs.push(x)}
   };
   const fetch = async (url, opts) => {
     assert.equal(opts.credentials,"omit");
@@ -145,4 +145,21 @@ test("Connect Last.fm saves new credentials, signs the token request, and opens 
   assert.equal(h.requests[0].params.api_sig,core.signature({method:"auth.getToken",api_key:"new-key"},"new-secret"));
   assert.equal(new URL(h.newTabs[0].url).searchParams.get("api_key"),"new-key");
   assert.equal((await h.send("finish")).data,"me");
+});
+
+test("opening the popup refreshes mapped Twitch tabs without writing and accepts a single granted host",async()=>{
+  const h = harness();
+  h.permission(["https://www.twitch.tv/*"]);
+  h.tabs([{url:host+"alice", active:false, mutedInfo:{muted:true}, discarded:true}]);
+  const status = (await h.send("status")).data;
+  assert.equal(status.mirrorState,"active");
+  assert.deepEqual(Array.from(status.active),["bob"]);
+  assert.equal(h.alarms.size,1);
+  assert.equal(h.requests.length,0);
+  h.tabs([{url:"https://twitch.tv/alice"}]);
+  assert.equal((await h.send("status")).data.mirrorState,"partial-permission");
+  h.permission(false);
+  assert.equal((await h.send("status")).data.mirrorState,"no-permission");
+  assert.equal(h.alarms.size,0);
+  assert.equal((await harness({disconnected:true}).send("status")).data.mirrorState,"disconnected");
 });

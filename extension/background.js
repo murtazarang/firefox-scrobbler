@@ -140,22 +140,31 @@ async function submit(config, account, rows, {live = false, source = "", gate} =
 async function snapshot() {
   const {config = {}, account} = await local.get(["config","account"]);
   const {windows = {}} = await session.get("windows");
-  const tabs = account?.key && config.mappings?.some(m => m.enabled) && await browser.permissions.contains({origins: TWITCH})
-    ? await browser.tabs.query({url: TWITCH}) : [];
-  const next = Scrobble.updateWindows(windows, tabs, config.mappings || [], seconds());
+  const enabled = (config.mappings || []).filter(m => m.enabled);
+  const origins = enabled.length ? (await Promise.all(TWITCH.map(async origin =>
+    await browser.permissions.contains({origins:[origin]}) ? origin : null))).filter(Boolean) : [];
+  const mappings = account?.key ? enabled.filter(m => m.profile !== account.name.toLowerCase()) : [];
+  const tabs = mappings.length && origins.length ? await browser.tabs.query({url:origins}) : [];
+  const next = Scrobble.updateWindows(windows, tabs, mappings, seconds());
   await session.set({windows: next});
-  return {config, account, windows: next};
+  const mirrorState = !enabled.length ? "no-mappings"
+    : !account?.key ? "disconnected"
+    : !mappings.length ? "same-account"
+    : !origins.length ? "no-permission"
+    : Object.keys(next).length ? "active"
+    : origins.length < TWITCH.length ? "partial-permission" : "not-open";
+  return {config, account, windows: next, mirrorState};
 }
 
 async function mirror(poll) {
-  const {config, account, windows} = await snapshot();
-  if (Object.keys(windows).length && account?.key) {
+  const current = await snapshot();
+  const {config, account, windows} = current;
+  if (Object.keys(windows).length) {
     if (!await browser.alarms.get(ALARM)) browser.alarms.create(ALARM, {periodInMinutes: 1});
   } else {
     await browser.alarms.clear(ALARM);
-    return;
   }
-  if (!poll) return;
+  if (!poll) return current;
   for (const [profile, w] of Object.entries(windows)) {
     if (profile === account.name.toLowerCase()) continue;
     try {
@@ -189,17 +198,18 @@ browser.tabs.onUpdated.addListener(() => schedule(), {properties:["url", "status
 browser.tabs.onRemoved.addListener(() => schedule());
 browser.tabs.onCreated.addListener(() => schedule());
 browser.permissions.onRemoved.addListener(() => schedule());
+browser.permissions.onAdded.addListener(() => schedule());
 
 async function action(message) {
-  const {config = {}, account} = await local.get(["config","account"]);
   if (message.action === "status") {
+    const {config,account,windows,mirrorState} = await mirror(false);
     const {mirrorStatus} = await local.get("mirrorStatus");
-    const {windows = {}} = await session.get("windows");
     return {config: {profiles: config.profiles || [], mappings: config.mappings || [], limit: config.limit || 50,
       hasKey: Boolean(config.apiKey), hasRecognition: Boolean(config.auddToken)},
-      account: account?.name, active: Object.keys(windows), mirrorStatus,
+      account: account?.name, active: Object.keys(windows), mirrorState, mirrorStatus,
       connecting: Boolean((await session.get("authToken")).authToken)};
   }
+  const {config = {}, account} = await local.get(["config","account"]);
   if (message.action === "save") {
     const next = {...config, ...message.config};
     if (next.apiKey !== config.apiKey || next.secret !== config.secret) {

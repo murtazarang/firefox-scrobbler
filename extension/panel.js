@@ -74,8 +74,17 @@ async function refresh() {
     $("setupHint").hidden = Boolean(state.account);
     $("profile").replaceChildren(...state.config.profiles.map(user => new Option(user,user)));
     $("preview").disabled = !state.config.profiles.length;
-    const {active, mirrorStatus: s} = state;
-    $("mirror").textContent = active.length ? "Following: " + active.join(", ") : "No mapped channels open.";
+    const {active, mirrorState, mirrorStatus: s} = state;
+    const mirrorMessages = {
+      "no-mappings": "No enabled Twitch mappings. Add one in Settings.",
+      "disconnected": "Connect Last.fm in Settings to start mirroring.",
+      "same-account": "The mapped Last.fm profile is the same as your connected account.",
+      "no-permission": "Twitch access is missing. In Settings, click Save settings and allow access.",
+      "partial-permission": "No matching tab with Twitch access. In Settings, click Save settings to allow both Twitch addresses.",
+      "not-open": "Open the exact mapped Twitch channel page. VODs and clip pages don’t count."
+    };
+    $("mirror").textContent = active.length ? "Following Last.fm: " + active.join(", ") :
+      mirrorMessages[mirrorState] || "No mapped channels open.";
     if (active.includes(s?.profile) && s.report.error) $("mirror").textContent += " " + s.report.error;
   }
 }
