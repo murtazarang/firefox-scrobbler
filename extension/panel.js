@@ -66,8 +66,7 @@ async function refresh() {
   if (settings) {
     $("finish").hidden = !state.connecting;
     $("disconnect").hidden = !state.account && !state.connecting;
-    $("apiKey").placeholder = state.config.hasKey ? "Saved" : "";
-    $("secret").placeholder = state.config.hasKey ? "Saved" : "";
+    $("connect").hidden = Boolean(state.account);
     $("auddToken").placeholder = state.config.hasRecognition ? "Saved" : "";
   } else {
     $("settings").textContent = state.account ? "Settings" : "Set up Last.fm";
@@ -189,12 +188,7 @@ if (settings) {
     note(allowed ? "" : "Permission wasn’t granted. You can try again here.");
   });
   bind("connect", async () => {
-    const apiKey = $("apiKey").value.trim(), secret = $("secret").value.trim();
-    if (Boolean(apiKey) !== Boolean(secret))
-      throw Error("Paste both credentials from the same Last.fm API application.");
-    await call("connect", {apiKey,secret});
-    $("apiKey").value = "";
-    $("secret").value = "";
+    await call("connect");
     await refresh();
     note("Approve on Last.fm, then return here and click Finish connecting.");
   });

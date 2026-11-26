@@ -1,6 +1,6 @@
 "use strict";
 
-const API = "https://ws.audioscrobbler.com/2.0/";
+const API = "https://stream-scrobbler.murtaza2142.workers.dev";
 const TWITCH = ["https://www.twitch.tv/*","https://twitch.tv/*"];
 const ALARM = "twitch-mirror";
 const DAY = 86400;
@@ -15,50 +15,58 @@ function serialize(fn) {
   return next;
 }
 
-async function api(config, method, args = {}, opts = {}) {
-  if (!config.apiKey) throw Error("Enter a Last.fm API key in Settings.");
-  const params = {method, api_key: config.apiKey, ...args};
-  if (opts.signed) params.api_sig = Scrobble.signature(params, config.secret);
-  params.format = "json";
-  const encoded = new URLSearchParams(params);
+async function api(path, data = {}, token) {
   let response;
   try {
-    response = await fetch(opts.post ? API : API + "?" + encoded, {
-      ...(opts.post ? {method: "POST", body: encoded} : {}),
+    response = await fetch(API + path, {
+      method: "POST", body: JSON.stringify(data),
+      headers: {"Content-Type":"application/json", ...(token ? {Authorization:"Bearer " + token} : {})},
       credentials: "omit", redirect: "error", signal: AbortSignal.timeout(20000)
     });
-  } catch { throw Error("Could not reach Last.fm."); }
+  } catch { throw Error("Could not reach Stream Scrobbler. Try again later."); }
   let result;
-  try { result = await response.json(); } catch { throw Error("Last.fm returned an unreadable response."); }
-  if (result.error) {
-    if (result.error === 9) {
-      await local.remove("account");
-      throw Error("Your Last.fm session expired. Reconnect in Settings.");
+  try { result = await response.json(); } catch { throw Error("Stream Scrobbler did not return an API response."); }
+  if (!response.ok) {
+    if (response.status === 401 && token) {
+      await local.remove(["account","mirrorStatus"]);
+      await session.remove("windows");
     }
-    if (result.error === 14) throw Error("Approve access on Last.fm, then click Finish connecting.");
-    if (opts.explainError) {
-      let detail = typeof result.message === "string" ? result.message : "";
-      for (const sensitive of [config.apiKey, config.secret].filter(Boolean))
-        detail = detail.split(sensitive).join("[redacted]");
-      detail = detail.replace(/\b[a-f\d]{32,}\b/gi,"[redacted]").replace(/\s+/g," ").trim().slice(0,240);
-      throw Error(`Last.fm couldn’t load plays (HTTP ${response.status}, API error ${Number(result.error)}).` +
-        (detail ? " " + detail : "") + " You can use Paste plays below.");
-    }
-    throw Error("Last.fm API error " + Number(result.error) + ".");
+    const error = Error(result?.error || "Stream Scrobbler HTTP " + response.status + ".");
+    error.status = response.status;
+    error.code = result?.code;
+    throw error;
   }
-  if (!response.ok) throw Error("Last.fm HTTP " + response.status + ".");
   return result;
 }
 
-async function recent(config, profile, {limit, from, to, explainError = false} = {}) {
+// Upgrade in place but never carry an old Last.fm secret or session into the hosted flow.
+async function migrate() {
+  const {config = {}, account} = await local.get(["config","account"]);
+  if (Object.hasOwn(config,"apiKey") || Object.hasOwn(config,"secret")) {
+    delete config.apiKey;
+    delete config.secret;
+    await local.set({config});
+    await session.remove("authToken");
+  }
+  if (account && !account.token) await local.remove(["account","mirrorStatus"]);
+}
+
+async function recent(account, profile, {limit, from, to, explainError = false} = {}) {
+  if (!account?.token) throw Error("Connect Last.fm in Settings first, or preview pasted plays.");
   const result = [];
   let current = null;
   let pages = 1;
   const perPage = Math.min(200, limit ?? 200);
   for (let page = 1; page <= pages && (limit == null || result.length < limit); page++) {
-    const data = await api(config, "user.getRecentTracks", {
-      user: profile, limit: perPage, page, ...(from ? {from} : {}), ...(to ? {to} : {})
-    }, {explainError});
+    if (page > 10) throw Error("Too many Last.fm history pages. Reduce the history limit.");
+    let data;
+    try {
+      data = await api("/recent",{user:profile,limit:perPage,page,
+        ...(from != null ? {from} : {}), ...(to != null ? {to} : {})},account.token);
+    } catch (error) {
+      if (explainError) error.message += (error.code ? " (Last.fm API error " + error.code + ")." : "") + " You can use Paste plays.";
+      throw error;
+    }
     const feed = data.recenttracks;
     if (!Array.isArray(feed?.track)) throw Error("Last.fm did not return a track list.");
     pages = Number(feed["@attr"]?.totalPages ?? 1);
@@ -72,8 +80,8 @@ async function recent(config, profile, {limit, from, to, explainError = false} =
   return {current, history: result.slice(0, limit ?? result.length)};
 }
 
-async function submit(config, account, rows, {live = false, source = "", gate} = {}) {
-  if (!account?.key) throw Error("Connect your Last.fm account in Settings first.");
+async function submit(account, rows, {live = false, source = "", gate} = {}) {
+  if (!account?.token) throw Error("Connect your Last.fm account in Settings first.");
   if (source === account.name.toLowerCase()) throw Error("Source and destination are the same Last.fm account.");
   const {ledger = {}} = await local.get("ledger");
   const now = seconds();
@@ -98,14 +106,6 @@ async function submit(config, account, rows, {live = false, source = "", gate} =
   while (pending.length) {
     if (gate && !await gate()) break;
     const batch = pending.splice(0,50);
-    const args = {sk: account.key};
-    batch.forEach(({row}, i) => {
-      args["artist["+i+"]"] = row.artist;
-      args["track["+i+"]"] = row.title;
-      args["timestamp["+i+"]"] = row.ts;
-      if (row.album) args["album["+i+"]"] = row.album;
-      if (live) args["chosenByUser["+i+"]"] = 0;
-    });
     // Reserve before sending: a lost response or browser stop must not cause an automatic double-write.
     for (const {id,alias} of batch) {
       ledger[id] = now;
@@ -113,15 +113,15 @@ async function submit(config, account, rows, {live = false, source = "", gate} =
     }
     await local.set({ledger});
     try {
-      const x = (await api(config, "track.scrobble", args, {signed: true, post: true})).scrobbles?.scrobble;
-      const results = Array.isArray(x) ? x : (x ? [x] : []);
-      if (results.length !== batch.length || results.some(r => !/^\d+$/.test(String(r.ignoredMessage?.code)))) {
+      const {codes} = await api("/scrobble",{rows:batch.map(({row}) => ({
+        artist:row.artist,title:row.title,ts:row.ts,...(row.album ? {album:row.album} : {})
+      })),live},account.token);
+      if (!Array.isArray(codes) || codes.length !== batch.length || codes.some(code => !Number.isSafeInteger(code))) {
         report.uncertain += batch.length;
         break;
       }
       let dailyLimit = false;
-      results.forEach((r,i) => {
-        const code = Number(r.ignoredMessage.code);
+      codes.forEach((code,i) => {
         if (code === 0) report.accepted++;
         else {
           report.rejected++;
@@ -151,12 +151,12 @@ async function snapshot() {
   const enabled = (config.mappings || []).filter(m => m.enabled);
   const origins = enabled.length ? (await Promise.all(TWITCH.map(async origin =>
     await browser.permissions.contains({origins:[origin]}) ? origin : null))).filter(Boolean) : [];
-  const mappings = account?.key ? enabled.filter(m => m.profile !== account.name.toLowerCase()) : [];
+  const mappings = account?.token ? enabled.filter(m => m.profile !== account.name.toLowerCase()) : [];
   const tabs = mappings.length && origins.length ? await browser.tabs.query({url:origins}) : [];
   const next = Scrobble.updateWindows(windows, tabs, mappings, seconds());
   await session.set({windows: next});
   const mirrorState = !enabled.length ? "no-mappings"
-    : !account?.key ? "disconnected"
+    : !account?.token ? "disconnected"
     : !mappings.length ? "same-account"
     : !origins.length ? "no-permission"
     : Object.keys(next).length ? "active"
@@ -166,21 +166,23 @@ async function snapshot() {
 
 async function mirror(poll) {
   const current = await snapshot();
-  const {config, account, windows} = current;
+  const {account, windows} = current;
   if (Object.keys(windows).length) {
     if (!await browser.alarms.get(ALARM)) browser.alarms.create(ALARM, {periodInMinutes: 1});
   } else {
     await browser.alarms.clear(ALARM);
   }
   if (!poll) return current;
+  const {mirrorRetryAt = 0} = await session.get("mirrorRetryAt");
+  if (seconds() < mirrorRetryAt) return current;
   for (const [profile, w] of Object.entries(windows)) {
     if (profile === account.name.toLowerCase()) continue;
     try {
       const to = seconds();
       const from = Math.max(w.from, to - 14*DAY);
       if (to <= from) continue;
-      const rows = (await recent(config, profile, {from: from - 1, to})).history;
-      const report = await submit(config, account, rows.filter(t => t.ts >= from), {
+      const rows = (await recent(account, profile, {from: from - 1, to})).history;
+      const report = await submit(account, rows.filter(t => t.ts >= from), {
         live: true, source: profile, gate: async () => (await snapshot()).windows[profile]?.since === w.since
       });
       const current = (await snapshot()).windows;
@@ -192,12 +194,16 @@ async function mirror(poll) {
       await local.set({mirrorStatus: {profile, report, time: to}});
     } catch (error) {
       await local.set({mirrorStatus: {profile, report: {error: error.message}, time: seconds()}});
+      if (error.status === 503 || error.status === 429 || error.status === 502) {
+        await session.set({mirrorRetryAt:seconds() + 180});
+        break;
+      }
     }
   }
 }
 
 function schedule(poll = false) {
-  return serialize(() => mirror(poll)).catch(() => {});
+  return serialize(async () => { await migrate(); return mirror(poll); }).catch(() => {});
 }
 browser.alarms.onAlarm.addListener(a => { if (a.name === ALARM) return schedule(true); });
 browser.runtime.onStartup.addListener(() => schedule());
@@ -209,62 +215,67 @@ browser.permissions.onRemoved.addListener(() => schedule());
 browser.permissions.onAdded.addListener(() => schedule());
 
 async function action(message) {
+  await migrate();
   if (message.action === "status") {
     const {config,account,windows,mirrorState} = await mirror(false);
     const {mirrorStatus} = await local.get("mirrorStatus");
     return {config: {profiles: config.profiles || [], mappings: config.mappings || [], limit: config.limit || 50,
-      hasKey: Boolean(config.apiKey), hasRecognition: Boolean(config.auddToken)},
+      hasRecognition: Boolean(config.auddToken)},
       account: account?.name, active: Object.keys(windows), mirrorState, mirrorStatus,
-      connecting: Boolean((await session.get("authToken")).authToken)};
+      connecting: Boolean((await session.get("connectionAttempt")).connectionAttempt)};
   }
   const {config = {}, account} = await local.get(["config","account"]);
   if (message.action === "save") {
-    const next = {...config, ...message.config};
-    if (next.apiKey !== config.apiKey || next.secret !== config.secret) {
-      await local.remove("account");
-      await session.remove("authToken");
-    }
+    const next = {...config};
+    for (const key of ["profiles","mappings","limit","auddToken"])
+      if (Object.hasOwn(message.config,key)) next[key] = message.config[key];
     await local.set({config: next});
     await mirror(false);
     return true;
   }
   if (message.action === "connect") {
-    const {apiKey,secret} = message;
-    if (Boolean(apiKey) !== Boolean(secret)) throw Error("Paste both Last.fm credentials.");
-    const next = apiKey ? {...config,apiKey,secret} : config;
-    if (!next.apiKey || !next.secret) throw Error("Enter your Last.fm API key and shared secret in Settings first.");
-    const {token} = await api(next, "auth.getToken", {}, {signed: true});
-    if (!token) throw Error("Last.fm didn’t return an authorization token.");
-    if (next.apiKey !== config.apiKey || next.secret !== config.secret) {
-      await local.remove("account");
-      await local.set({config:next});
-      await mirror(false);
-    }
-    await session.set({authToken: token});
-    await browser.tabs.create({url:"https://www.last.fm/api/auth/?" + new URLSearchParams({api_key:next.apiKey,token})});
+    if (account?.token) throw Error("Disconnect the current Last.fm account before connecting another.");
+    const {attempt,url} = await api("/auth/start");
+    const target = new URL(url);
+    if (typeof attempt !== "string" || !/^[a-f0-9]{64}$/.test(attempt) || target.origin !== "https://www.last.fm" ||
+        target.pathname !== "/api/auth/" || target.username || target.password)
+      throw Error("Stream Scrobbler returned an invalid Last.fm authorization link.");
+    await session.set({connectionAttempt:attempt});
+    await browser.tabs.create({url:target.href});
     return true;
   }
   if (message.action === "finish") {
-    const {authToken: token} = await session.get("authToken");
-    if (!token) throw Error("Click Connect Last.fm first.");
-    const {session: linked} = await api(config, "auth.getSession", {token}, {signed: true});
-    if (!linked?.key || !linked.name) throw Error("Last.fm did not return a session.");
-    await local.set({account:{key:linked.key,name:linked.name}});
-    await session.remove("authToken");
+    if (account?.token) throw Error("A Last.fm account is already connected.");
+    const {connectionAttempt: attempt} = await session.get("connectionAttempt");
+    if (!attempt) throw Error("Click Connect Last.fm first.");
+    let linked;
+    try { linked = await api("/auth/finish",{attempt}); }
+    catch (error) {
+      if (error.status === 410) await session.remove("connectionAttempt");
+      throw error;
+    }
+    if (!/^[a-f0-9]{64}$/.test(linked?.token) || typeof linked?.name !== "string" || !linked.name)
+      throw Error("Stream Scrobbler did not return a connection.");
+    await local.set({account:{token:linked.token,name:linked.name}});
+    await session.remove(["connectionAttempt","windows","mirrorRetryAt"]);
     await mirror(false);
     return linked.name;
   }
   if (message.action === "disconnect") {
+    if (account?.token) {
+      try { await api("/disconnect",{},account.token); }
+      catch (error) { if (error.status !== 401) throw error; }
+    }
     await local.remove(["account","mirrorStatus"]);
-    await session.remove("authToken");
+    await session.remove(["connectionAttempt","windows","mirrorRetryAt"]);
     await mirror(false);
     return true;
   }
   if (message.action === "preview") {
     if (!config.profiles?.includes(message.profile)) throw Error("Select a saved Last.fm profile.");
-    return recent(config, message.profile, {limit:config.limit || 50, explainError:true});
+    return recent(account, message.profile, {limit:config.limit || 50, explainError:true});
   }
-  if (message.action === "submit") return submit(config, account, message.rows.map(row =>
+  if (message.action === "submit") return submit(account, message.rows.map(row =>
     ({...row, ts: row.ts ?? seconds()})), {source:message.source || ""});
   throw Error("Unknown extension action.");
 }

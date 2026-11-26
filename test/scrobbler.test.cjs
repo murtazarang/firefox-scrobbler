@@ -1,6 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {createHash} = require("node:crypto");
 const {readFileSync} = require("node:fs");
 const vm = require("node:vm");
 const core = require("../extension/core.js");
@@ -21,12 +20,12 @@ function storage(initial = {}) {
     async remove(keys){ [keys].flat().forEach(k => delete values[k]); }
   };
 }
-function harness({feed, result, config = {}, disconnected = false} = {}) {
+function harness({feed, result, config = {}, disconnected = false, legacy = false} = {}) {
   let now = tick, tabs = [], enabled = true;
   const requests = [], newTabs = [], alarms = new Map();
-  const local = storage({config:{apiKey:"test",secret:"example",profiles:["bob"],limit:10,
+  const local = storage({config:{...(legacy && {apiKey:"old-key",secret:"old-secret"}),profiles:["bob"],limit:10,
     mappings:[{channel:"alice",profile:"bob",enabled:true}],...config},
-    ...(!disconnected && {account:{key:"session",name:"me"}})});
+    ...(!disconnected && {account:legacy ? {key:"old-session",name:"me"} : {token:"c".repeat(64),name:"me"}})});
   const session = storage();
   const browser = {
     storage:{local,session}, alarms:{onAlarm:event(),get:k=>alarms.get(k),create:(k,v)=>alarms.set(k,v),clear:k=>alarms.delete(k)},
@@ -36,15 +35,17 @@ function harness({feed, result, config = {}, disconnected = false} = {}) {
   };
   const fetch = async (url, opts) => {
     assert.equal(opts.credentials,"omit");
-    assert.equal(new URL(url).origin,"https://ws.audioscrobbler.com");
-    const params = Object.fromEntries(opts.body || new URL(url).searchParams);
-    requests.push({params, opts});
-    const method = params.method;
-    const data = method === "user.getRecentTracks" ? (feed?.(params) ?? {recenttracks:{track:[]}}) :
-      method === "auth.getToken" ? {token:"once"} :
-      method === "auth.getSession" ? {session:{key:"session",name:"me"}} :
-      result ? result(params) : {scrobbles:{scrobble:Object.keys(params).filter(k=>k.startsWith("artist[")).map(()=>({ignoredMessage:{code:"0"}}))}};
-    return {ok:!data.error,status:data.error === 8 ? 500 : 200,json:async()=>data};
+    assert.equal(new URL(url).origin,"https://stream-scrobbler.murtaza2142.workers.dev");
+    const params = JSON.parse(opts.body);
+    const route = new URL(url).pathname;
+    requests.push({params, opts, route});
+    const data = route === "/recent" ? (feed?.(params) ?? {recenttracks:{track:[]}}) :
+      route === "/auth/start" ? {attempt:"a".repeat(64),url:"https://www.last.fm/api/auth/?api_key=public&token=once"} :
+      route === "/auth/finish" ? {token:"c".repeat(64),name:"me"} :
+      route === "/disconnect" ? {ok:true} :
+      result ? result(params) : {codes:params.rows.map(()=>0)};
+    return {ok:!data.error,status:data.error ? 503 : 200,json:async()=>data};
+
   };
   const context = vm.createContext({browser,fetch,URL,URLSearchParams,AbortSignal,TextEncoder,Date:{now:()=>now*1000}});
   for (const path of model.background.scripts) vm.runInContext(readFileSync("extension/"+path,"utf8"),context);
@@ -54,14 +55,6 @@ function harness({feed, result, config = {}, disconnected = false} = {}) {
     poll:()=>browser.alarms.onAlarm.fire({name:"twitch-mirror"})};
 }
 
-test("MD5 agrees with Node over UTF-8 and block boundaries",()=>{
-  for (const s of ["","abc","é🎵",...Array.from({length:81},(_,i)=>"x".repeat(i+48))])
-    assert.equal(core.md5(s),createHash("md5").update(s).digest("hex"));
-});
-test("Last.fm signature sorts indexed fields in ASCII order",()=>{
-  const args = {"artist[1]":"A","artist[10]":"B",api_key:"key",format:"json",method:"track.scrobble"};
-  assert.equal(core.signature(args,"secret"),createHash("md5").update("api_keykeyartist[10]Bartist[1]Amethodtrack.scrobblesecret").digest("hex"));
-});
 test("exact profile and channel paths, no spoofed origins or VODs",()=>{
   assert.equal(core.nameFromUrl(host+"User_1?foo=bar","twitch"),"user_1");
   for (const url of ["https://twitch.tv.evil/user","https://twitch.tv/alice/clips","https://twitch.tv/videos/123","https://alice@twitch.tv/test"])
@@ -73,20 +66,21 @@ test("Last.fm approval creates a separate API session; no cookies",async()=>{
   assert.ok((await h.send("connect")).data);
   assert.equal(new URL(h.newTabs[0].url).searchParams.get("token"),"once");
   assert.equal((await h.send("finish")).data,"me");
-  assert.equal(h.local.values.account.key,"session");
+  assert.equal(h.local.values.account.token,"c".repeat(64));
   await h.send("disconnect");
   assert.equal(h.local.values.account,undefined);
-  assert.equal(h.requests.length,2);
-  assert.ok(h.requests.every(x=>x.params.api_sig && !x.opts.body));
+  assert.deepEqual(h.requests.map(x=>x.route),["/auth/start","/auth/finish","/disconnect"]);
+  assert.equal(h.requests[1].params.attempt,"a".repeat(64));
+  assert.equal(h.requests[2].opts.headers.Authorization,"Bearer "+"c".repeat(64));
 });
 test("preview separates Now Playing, pages through history, and never writes",async()=>{
-  const h = harness({config:{limit:2},feed:p=>({recenttracks:{"@attr":{totalPages:"2"},track:p.page==="1" ?
+  const h = harness({config:{limit:2},feed:p=>({recenttracks:{"@attr":{totalPages:"2"},track:p.page===1 ?
     [{name:"Current",artist:{"#text":"Artist"},"@attr":{nowplaying:"true"}},row("First",tick-60)] : [row("Second",tick-120)]}})});
   const preview = (await h.send("preview",{profile:"bob"})).data;
   assert.equal(preview.current.title,"Current");
   assert.equal(preview.current.ts,null);
   assert.deepEqual(Array.from(preview.history,x=>x.title),["First","Second"]);
-  assert.ok(h.requests.every(x=>x.params.method==="user.getRecentTracks"));
+  assert.ok(h.requests.every(x=>x.route==="/recent"));
 });
 test("manual submits in batches of 50, preserves time, skips old and repeat plays",async()=>{
   const h = harness();
@@ -95,7 +89,7 @@ test("manual submits in batches of 50, preserves time, skips old and repeat play
   const a = (await h.send("submit",{rows,source:"bob"})).data;
   assert.equal(a.accepted,51); assert.equal(a.skipped,1);
   assert.deepEqual(h.requests.map(x=>x.opts.method),["POST","POST"]);
-  assert.equal(h.requests[0].params["timestamp[0]"],String(tick-150));
+  assert.equal(h.requests[0].params.rows[0].ts,tick-150);
   assert.equal((await h.send("submit",{rows,source:"bob"})).data.skipped,52);
   assert.equal(h.requests.length,2);
 });
@@ -109,8 +103,8 @@ test("muted, idle background Twitch tabs mirror exactly once and never backfill 
   h.clock(tick+60);
   await h.poll();
   await h.poll();
-  assert.deepEqual(h.requests.filter(x=>x.opts.body).map(x=>x.params["track[0]"]),["First"]);
-  assert.equal(h.requests.find(x=>x.opts.body).params["chosenByUser[0]"],"0");
+  assert.deepEqual(h.requests.filter(x=>x.route==="/scrobble").map(x=>x.params.rows[0].title),["First"]);
+  assert.equal(h.requests.find(x=>x.route==="/scrobble").params.live,true);
   h.tabs([]);
   await h.browser.tabs.onRemoved.fire();
   assert.equal(h.alarms.size,0);
@@ -119,10 +113,10 @@ test("muted, idle background Twitch tabs mirror exactly once and never backfill 
   await h.browser.tabs.onUpdated.fire();
   h.clock(tick+120);
   await h.poll();
-  assert.equal(h.requests.filter(x=>x.opts.body).length,1);
+  assert.equal(h.requests.filter(x=>x.route==="/scrobble").length,1);
 });
 test("reports per-track filtering even when the API request succeeded",async()=>{
-  const h = harness({result:()=>({scrobbles:{scrobble:{ignoredMessage:{code:"2"}}}})});
+  const h = harness({result:()=>({codes:[2]})});
   const a = (await h.send("submit",{rows:[track("Filtered",tick-30)]})).data;
   assert.equal(a.rejected,1);
   assert.equal(a.accepted,0);
@@ -135,16 +129,18 @@ test("ambiguous submission is not repeated automatically",async()=>{
   assert.equal(h.requests.length,1);
 });
 
-test("Connect Last.fm saves new credentials, signs the token request, and opens approval",async()=>{
-  const h = harness({config:{apiKey:"",secret:""},disconnected:true});
-  assert.ok((await h.send("connect",{apiKey:"only-one"})).error);
-  assert.equal(h.requests.length,0);
-  assert.ok((await h.send("connect",{apiKey:"new-key",secret:"new-secret"})).data);
-  assert.equal(h.local.values.config.apiKey,"new-key");
-  assert.equal(h.local.values.config.secret,"new-secret");
-  assert.equal(h.requests[0].params.api_sig,core.signature({method:"auth.getToken",api_key:"new-key"},"new-secret"));
-  assert.equal(new URL(h.newTabs[0].url).searchParams.get("api_key"),"new-key");
-  assert.equal((await h.send("finish")).data,"me");
+test("upgrade drops BYO Last.fm secrets and session without losing preferences",async()=>{
+  const h = harness({legacy:true,config:{auddToken:"keep"}});
+  const state = (await h.send("status")).data;
+  assert.equal(state.account,undefined);
+  assert.equal(h.local.values.account,undefined);
+  assert.equal(h.local.values.config.apiKey,undefined);
+  assert.equal(h.local.values.config.secret,undefined);
+  assert.equal(h.local.values.config.auddToken,"keep");
+  assert.deepEqual(h.local.values.config.profiles,["bob"]);
+  assert.ok((await h.send("connect")).data);
+  assert.deepEqual(h.requests[0].params,{});
+  assert.equal(new URL(h.newTabs[0].url).searchParams.get("api_key"),"public");
 });
 
 test("opening the popup refreshes mapped Twitch tabs without writing and accepts a single granted host",async()=>{
@@ -164,14 +160,27 @@ test("opening the popup refreshes mapped Twitch tabs without writing and accepts
   assert.equal((await harness({disconnected:true}).send("status")).data.mirrorState,"disconnected");
 });
 
-test("manual preview shows HTTP and API detail without exposing credentials",async()=>{
-  const h = harness({feed:()=>({error:8,message:"Backend error for SENSITIVE. Please try again."}),config:{apiKey:"SENSITIVE"}});
+test("manual preview surfaces the Last.fm outage and paste fallback",async()=>{
+  const h = harness({feed:()=>({error:"Last.fm is temporarily unavailable.",code:8})});
   const reply = await h.send("preview",{profile:"bob"});
-  assert.match(reply.error,/HTTP 500, API error 8/);
-  assert.match(reply.error,/Backend error for \[redacted\]/);
-  assert.doesNotMatch(reply.error,/SENSITIVE/);
+  assert.match(reply.error,/Last.fm API error 8/);
+  assert.match(reply.error,/Paste plays/);
+  assert.equal(h.requests[0].route,"/recent");
   assert.equal(h.requests.length,1);
-  assert.equal(h.requests[0].opts.body,undefined);
+});
+
+test("Twitch polling backs off for three minutes after an upstream error",async()=>{
+  const h = harness({feed:()=>({error:"Last.fm is temporarily unavailable.",code:8})});
+  h.tabs([{url:host+"alice"}]);
+  await h.browser.tabs.onUpdated.fire();
+  h.clock(tick+60);
+  await h.poll();
+  h.clock(tick+120);
+  await h.poll();
+  assert.equal(h.requests.length,1);
+  h.clock(tick+240);
+  await h.poll();
+  assert.equal(h.requests.length,2);
 });
 
 test("copies an English Recent Tracks table verbatim, including repeated plays",()=>{
