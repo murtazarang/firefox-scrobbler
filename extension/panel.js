@@ -143,24 +143,24 @@ if (settings) {
     // Invoke permission requests straight from the click, before awaiting other operations.
     if (mappings.some(m => m.enabled) && !await browser.permissions.request({origins:TWITCH})) throw Error("Twitch access is needed for automatic mirroring.");
     const config = {profiles,limit,mappings};
-    for (const id of ["apiKey","secret","auddToken"]) if ($(id).value.trim()) config[id] = $(id).value.trim();
+    if ($("auddToken").value.trim()) config.auddToken = $("auddToken").value.trim();
     if ($("forgetAudD").checked) config.auddToken = "";
     await call("save",{config});
-    for (const id of ["apiKey","secret","auddToken"]) $(id).value = "";
+    $("auddToken").value = "";
     $("forgetAudD").checked = false;
     await refresh();
     note("Settings saved.");
   });
-  bind("saveCredentials", async () => {
+  bind("connect", async () => {
     const apiKey = $("apiKey").value.trim(), secret = $("secret").value.trim();
-    if (!apiKey || !secret) throw Error("Paste both credentials from the same Last.fm API application.");
-    await call("save",{config:{apiKey,secret}});
+    if (Boolean(apiKey) !== Boolean(secret))
+      throw Error("Paste both credentials from the same Last.fm API application.");
+    await call("connect", {apiKey,secret});
     $("apiKey").value = "";
     $("secret").value = "";
     await refresh();
-    note("Credentials saved. Click Connect Last.fm.");
+    note("Approve on Last.fm, then return here and click Finish connecting.");
   });
-  bind("connect",async () => { await call("connect"); await refresh(); note("Approve on Last.fm, then return here and click Finish connecting."); });
   bind("finish",async () => { const account = await call("finish"); await refresh(); note("Connected as " + account + "."); });
   bind("disconnect",async () => { await call("disconnect"); await refresh(); note("Disconnected. Revoke server-side access in Last.fm Settings → Applications if desired."); });
   refresh().then(() => {

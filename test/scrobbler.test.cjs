@@ -134,3 +134,15 @@ test("ambiguous submission is not repeated automatically",async()=>{
   assert.equal((await h.send("submit",{rows})).data.skipped,1);
   assert.equal(h.requests.length,1);
 });
+
+test("Connect Last.fm saves new credentials, signs the token request, and opens approval",async()=>{
+  const h = harness({config:{apiKey:"",secret:""},disconnected:true});
+  assert.ok((await h.send("connect",{apiKey:"only-one"})).error);
+  assert.equal(h.requests.length,0);
+  assert.ok((await h.send("connect",{apiKey:"new-key",secret:"new-secret"})).data);
+  assert.equal(h.local.values.config.apiKey,"new-key");
+  assert.equal(h.local.values.config.secret,"new-secret");
+  assert.equal(h.requests[0].params.api_sig,core.signature({method:"auth.getToken",api_key:"new-key"},"new-secret"));
+  assert.equal(new URL(h.newTabs[0].url).searchParams.get("api_key"),"new-key");
+  assert.equal((await h.send("finish")).data,"me");
+});

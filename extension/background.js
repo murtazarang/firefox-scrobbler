@@ -211,11 +211,19 @@ async function action(message) {
     return true;
   }
   if (message.action === "connect") {
-    if (!config.secret) throw Error("Enter your Last.fm API key and shared secret in Settings first.");
-    const {token} = await api(config, "auth.getToken", {}, {signed: true});
+    const {apiKey,secret} = message;
+    if (Boolean(apiKey) !== Boolean(secret)) throw Error("Paste both Last.fm credentials.");
+    const next = apiKey ? {...config,apiKey,secret} : config;
+    if (!next.apiKey || !next.secret) throw Error("Enter your Last.fm API key and shared secret in Settings first.");
+    const {token} = await api(next, "auth.getToken", {}, {signed: true});
     if (!token) throw Error("Last.fm didn’t return an authorization token.");
+    if (next.apiKey !== config.apiKey || next.secret !== config.secret) {
+      await local.remove("account");
+      await local.set({config:next});
+      await mirror(false);
+    }
     await session.set({authToken: token});
-    await browser.tabs.create({url:"https://www.last.fm/api/auth/?" + new URLSearchParams({api_key:config.apiKey,token})});
+    await browser.tabs.create({url:"https://www.last.fm/api/auth/?" + new URLSearchParams({api_key:next.apiKey,token})});
     return true;
   }
   if (message.action === "finish") {

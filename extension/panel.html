@@ -28,12 +28,12 @@
     <ol class="hint">
       <li>Sign in to Last.fm. If you already registered an app, open <a href="https://www.last.fm/api/accounts" target="_blank" rel="noopener noreferrer">My Last.fm API accounts</a> and select that app. Otherwise, <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer">register a Last.fm API application</a>.</li>
       <li>Copy the <strong>API key</strong> and <strong>Shared secret</strong> from the same API application page. The shared secret is not your Last.fm password and does not appear in your regular profile settings.</li>
-      <li>Paste both below and click <strong>Save credentials</strong>. Then click <strong>Connect Last.fm</strong>, approve on Last.fm, and return here to click <strong>Finish connecting</strong>.</li>
+      <li>Paste both below and click <strong>Connect Last.fm</strong>. That saves the credentials and opens Last.fm for approval. Then return here and click <strong>Finish connecting</strong>.</li>
     </ol>
     <p class="hint">Blank fields leave saved credentials unchanged.</p>
     <label for="apiKey">Last.fm API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false">
     <label for="secret">Last.fm shared secret</label><input id="secret" type="password" autocomplete="off" spellcheck="false">
-    <div class="buttons"><button id="saveCredentials" class="primary">Save credentials</button><button id="connect">Connect Last.fm</button><button id="finish">Finish connecting</button><button id="disconnect">Disconnect</button></div>
+    <div class="buttons"><button id="connect" class="primary">Connect Last.fm</button><button id="finish">Finish connecting</button><button id="disconnect">Disconnect</button></div>
   </section>
   <section>
     <h2>Manual copying</h2>
