@@ -2,39 +2,65 @@
 
 This is a Worker and one D1 database, not a Pages app. The Firefox build on this branch targets `https://stream-scrobbler.murtaza2142.workers.dev`. Keep the existing `stream-scrobbler` placeholder and its Worker-level **All traffic** Access policy during initial deployment. No custom domain or GitHub integration is needed.
 
-## One-time Cloudflare setup
+## 1. Protect the production Worker during setup
 
-1. Protect only this Worker's production and preview URLs during initial deployment:
-   1. In the Cloudflare account dashboard sidebar, go to **Build → Compute → Workers & Pages**.
-   2. Open `stream-scrobbler` and click the **Access** tab, immediately left of **Settings**. Do not use the account-wide **Protect all Workers** control.
-   3. If the Worker is not already protected, click **Protect this Worker behind Access**.
-   4. Choose **All traffic**, not **Previews only**, so the production `workers.dev` URL is protected.
-   5. Under **Authentication policy**, choose **Cloudflare account** to allow members of this Cloudflare account. Leave the session duration at its default.
-   6. Click **Apply Access**. If the Worker is already protected, verify the existing scope and policy instead of adding a duplicate. Stop if an existing policy needs to be replaced.
+Use **All traffic** with **Cloudflare account members → Allow** on this Worker only. If those settings are already saved, skip to [step 2](#2-create-one-deployment-token-with-two-policies).
 
-   This is a browser sign-in policy for requests to the Worker, separate from the deployment token in the next step. [Cloudflare's Protect one Worker instructions](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#protect-one-worker)
-2. In **Workers & Pages → stream-scrobbler → Settings → Builds**, find **API token for external CI/CD** and click **Create token**. It opens **Account API tokens → Create a token** with the Worker policy ready to edit. If opening [Account API tokens directly](https://dash.cloudflare.com/?to=%2F%3Aaccount%2Fapi-tokens) instead, select the same account, click **Create Token**, then use **Start from scratch** to open the first policy.
-3. Fill in **Token name** with `stream-scrobbler-setup`. In the first **Edit policy** block:
-   - Set the scope to **Specified Workers**. Use **Select Workers…** to select only `stream-scrobbler`. The placeholder alone means no Worker is selected.
-   - Under **Developer Platform**, in the **Individual Workers** row, check only **Editor**.
-4. Click **+ Add policy** below that block to add a second policy. If shown templates, choose **Start from scratch** for the new policy. Set the new policy's scope to **Entire Account**. Search for `D1` in the new policy and select only the D1 edit permission (**D1 Edit** in Cloudflare's permission reference). Leave the first policy scoped to the single Worker.
+1. In the Cloudflare dashboard sidebar, go to **Build → Compute → Workers & Pages**.
+2. Select **stream-scrobbler** in the application list.
+3. Click **Access** in the Worker's top tab bar, immediately left of **Settings**. Do not use **Protect all Workers** on the overview page.
+4. For a Worker that is not yet protected, click **Protect this Worker behind Access**. For a Worker that already has its own Access policy, open **Edit Worker access** to verify it; do not add a duplicate.
+5. Under **Scope**, select **All traffic**. **Previews only** does not protect the production URL.
+6. Under **Authentication policy**, select **Cloudflare account** if the rule is missing. The resulting rule is **Cloudflare account members** with **Allow**. Leave **Session duration** at its default; the existing setup shows **6 hours**.
+7. Click **Apply Access** for new protection, or **Save changes** if you edited an existing policy. If you only inspected an existing policy and made no changes, click **Cancel**.
 
-   The external CI/CD shortcut only starts the Worker policy. The setup script also needs the second policy to create and migrate D1. Do not add unrelated permissions or broaden Worker access.
+[Cloudflare's Worker Access guide and screenshots](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#protect-one-worker)
 
-5. Under **Token expiration**, select **7 days** (or **Custom** for a shorter duration). Leave **Client IP address filtering** blank. Click **Review token**, verify it shows the two policies above, then click **Create Token**. Copy the token when shown; it will not be shown again. If a scope or permission is missing, stop rather than choosing broader access. Cloudflare requires **Super Administrator** or **API Token Provisioning** to create an account-owned token. Do not use Wrangler OAuth login as a substitute. [Scoped Worker permissions](https://developers.cloudflare.com/changelog/post/2026-09-15-granular-worker-permissions/#create-a-scoped-api-token) · [D1 permission names](https://developers.cloudflare.com/fundamentals/api/reference/permissions/#account-permissions) · [D1 create permission](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/create/)
-6. Have the account ID ready (the 32-character ID in the account dashboard URL), plus your [Last.fm application key and shared secret](https://www.last.fm/api/accounts). Put no production credentials in GitHub or chat.
+## 2. Create one deployment token with two policies
 
-7. In an interactive Bash terminal with **Node.js 24+ and npm**, run this from the repository root:
+The Worker Access policy controls browser sign-in. This account API token is a separate credential for the setup script. If you already have a token with both policies below, skip to [step 3](#3-run-the-installer).
+
+1. Return to **Workers & Pages → stream-scrobbler** and click the **Settings** tab.
+2. In Settings, click **Builds** in the right-hand menu.
+3. In **API token for external CI/CD**, click **Create token**. This opens **Account API tokens → Create a token**. If you already have that form open, start at the next step. If you reached it via the [Account API tokens page](https://dash.cloudflare.com/?to=%2F%3Aaccount%2Fapi-tokens) and there is no policy block yet, choose **Start from scratch**.
+4. In **Token name**, enter `stream-scrobbler-setup`.
+5. In the first **Edit policy** block, set the scope to **Specified Workers**.
+6. Open **Select Workers…** and select only `stream-scrobbler`. Placeholder text alone does not select a Worker.
+7. Under **Developer Platform → Individual Workers**, check only **Editor**.
+8. Click **+ Add policy** below the first block. It adds a second policy to the same token. If Cloudflare opens a template picker, choose **Start from scratch**.
+9. Set the second block's scope to **Entire Account**.
+10. Search for `D1` within the second block and select only its **Edit** permission, named **D1 Edit** in Cloudflare's reference. The first block must stay scoped to the one Worker. If the permission is missing, stop rather than selecting a broader template.
+11. Under **Token expiration**, choose **7 days**. Leave **Client IP address filtering** blank.
+12. Click **Review token** and verify only **Editor** for `stream-scrobbler` and **D1 Edit** for the current account. The second grant lets the installer create and migrate D1; the Worker-only shortcut does not grant it.
+13. Click **Create Token** once and copy the token when shown. Keep it out of chat, GitHub, and screenshots.
+
+Creating an account API token requires **Super Administrator** or **API Token Provisioning**. Do not run `wrangler login` as a substitute. [Scoped Worker permissions](https://developers.cloudflare.com/changelog/post/2026-09-15-granular-worker-permissions/#create-a-scoped-api-token) · [D1 permission names](https://developers.cloudflare.com/fundamentals/api/reference/permissions/#account-permissions)
+
+## 3. Run the installer
+
+Use an interactive Bash terminal with **Node.js 24+ and npm**. From the checkout on `main`, run `git pull --ff-only` if you need to update an existing checkout. The account ID is the 32-character ID in the Cloudflare account dashboard URL. Have the application key and shared secret from the same [Last.fm API application](https://www.last.fm/api/accounts) ready.
+
+1. From the repository root, run:
 
    ```bash
    bash worker/setup.sh
    ```
 
-   The script asks for the account ID and scoped token (hidden), checks the existing Worker, and asks for confirmation before making changes. It reuses or creates the `stream-scrobbler` D1 database, applies pending migrations, prompts for missing Last.fm credentials without echoing them, generates a session-encryption key if needed, and deploys to the existing Worker. It preserves existing secrets and never silently replaces an encryption key for a database with saved sessions. It stages configuration and any new secrets in a private temporary directory and removes it on exit; it does not modify the checkout. **All traffic** Access remains in place. If a setup step fails after creating D1, rerun setup rather than creating another database.
+2. At **Cloudflare account ID**, enter the ID.
+3. At **Scoped Cloudflare API token (hidden)**, paste your token and press Enter. Nothing echoes while you paste. The first two prompts are skipped if their corresponding environment variables are already set.
+4. After the script checks access to the existing Worker, confirm **All traffic** is on by typing `deploy` at the confirmation prompt. Any other input stops setup without changing remote resources.
+5. After the D1 lookup, enter `LASTFM_API_KEY` and `LASTFM_SHARED_SECRET` if prompted. These prompts are hidden; existing Worker secrets are retained. The script generates `SESSION_ENCRYPTION_KEY` if needed and will not replace a missing key if doing so would strand existing sessions.
 
-8. Open [the Worker health endpoint](https://stream-scrobbler.murtaza2142.workers.dev/health) and sign in through Cloudflare Access. Expect `{"ok":true}`. This checks reachability, not D1 or Last.fm authorization. Revoke the setup token in Cloudflare once finished; it is not needed at runtime. If you manually manage the Worker secrets later, do not rotate `SESSION_ENCRYPTION_KEY` casually: the current sessions need the original key to be readable.
+The installer creates or reuses `stream-scrobbler` in D1, applies its migration, and deploys to the existing Worker. It removes its temporary staging files and does not edit the checkout, change Cloudflare Access, or publish the Firefox add-on. If a run fails after creating D1, correct the reported error and rerun the installer; do not create a second database or run the migration SQL manually.
 
-[Granular Wrangler access](https://developers.cloudflare.com/workers/authorization/#use-granular-permissions-with-wrangler) · [Account token setup](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/) · [D1 commands](https://developers.cloudflare.com/d1/wrangler-commands/) · [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/) · [Worker Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+## 4. Verify the private deployment
+
+1. Open the [Worker health endpoint](https://stream-scrobbler.murtaza2142.workers.dev/health) in a browser.
+2. Sign in through Cloudflare Access if prompted.
+3. Confirm the response is `{"ok":true}`. This checks Worker reachability only, not D1 or Last.fm sign-in, reads, or scrobbles.
+4. Revoke the setup token from **Account API tokens** once setup is finished. The running Worker does not use it.
+
+Do not rotate `SESSION_ENCRYPTION_KEY` casually: existing sessions need the original secret. Keep **All traffic** on during private setup. See [verification and release](#verification-and-release) before changing that setting to test Firefox against the hosted Worker.
 
 ## Verification and release
 
