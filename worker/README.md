@@ -6,17 +6,14 @@ This is a Worker and one D1 database, not a Pages app. The Firefox build on this
 
 1. From **Workers & Pages**, select `stream-scrobbler` → **Access** and verify **All traffic** is enabled. Leave it enabled.
 2. Open [Account API tokens directly](https://dash.cloudflare.com/?to=%2F%3Aaccount%2Fapi-tokens) and select the same account if prompted. This is an account-level page, not the Workers & Pages sidebar or **My Profile → API Tokens**.
-3. On **Account API Tokens**, click **Create Token**, then **Create Custom Token → Get started**. Set **Token name** to `stream-scrobbler-setup`.
-4. Under **Permission policies**, add only these two permissions as separate entries:
+3. On **Account API tokens**, click **Create Token**. On the **Create a token** screen, enter `stream-scrobbler-setup` in **Token name**. Under **Permission policies**, click **Start from scratch** (the **Custom** card with the plus icon). Skip the **Edit Cloudflare Workers** preset.
+4. Add two separate permission policies on that form:
+   - First policy: change the scope from **Entire Account** to **Specified Workers**, select only `stream-scrobbler`, then choose **Individual Workers Editor** (the **Editor** role for that Worker) and click **Add policy**.
+   - Second policy: choose **Start from scratch** again, leave the scope at **Entire Account**, search for **D1**, select only **D1 Edit** (called **D1 Write** in the API docs), and click **Add policy**.
 
-   | Resource scope | Select | Permission |
-   | --- | --- | --- |
-   | **Specified Workers** | Only `stream-scrobbler` | **Individual Workers Editor** (the **Editor** role for the selected Worker) |
-   | **Entire Account** | The current Cloudflare account | **D1 Edit** (called **D1 Write** in the API docs) |
+   The account-wide scope applies only to D1. It is needed to create the database and apply its migration. The Worker's **API token for external CI/CD** shortcut alone does not grant database access and cannot run this setup script. Do not add other permissions. If a listed scope or permission is missing, stop rather than broadening the token.
 
-   The second entry applies only to D1. It is needed to create the database and apply its migration. Do not select broader Workers permissions, a preset template, or any DNS, Billing, Cache, or Access permissions.
-
-5. Set a short expiry under **TTL**. Click **Review token** (or **Continue to summary**), confirm the two permissions, then click **Create Token**. Copy the value when shown; it will not be shown again. If the direct link denies access, Cloudflare requires **Super Administrator** or **API Token Provisioning** to create an account-owned token. Do not substitute the broad Wrangler OAuth login. [Cloudflare's custom-token screen](https://developers.cloudflare.com/flagship/api-tokens/#create-an-account-wide-token) · [Scoped Worker permissions](https://developers.cloudflare.com/changelog/post/2026-09-15-granular-worker-permissions/#create-a-scoped-api-token) · [D1 create permission](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/create/)
+5. Under **Token expiration**, select **7 days** (or **Custom** for a shorter duration). Leave **Client IP address filtering** blank. Click **Review token**, verify the two policies, then click **Create Token**. Copy the token when shown; it will not be shown again. If the direct link denies access, Cloudflare requires **Super Administrator** or **API Token Provisioning** to create an account-owned token. Do not use Wrangler OAuth login as a substitute. [Scoped Worker permissions](https://developers.cloudflare.com/changelog/post/2026-09-15-granular-worker-permissions/#create-a-scoped-api-token) · [D1 create permission](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/create/)
 6. Have the account ID ready (the 32-character ID in the account dashboard URL), plus your [Last.fm application key and shared secret](https://www.last.fm/api/accounts). Put no production credentials in GitHub or chat.
 
 7. In an interactive Bash terminal with **Node.js 24+ and npm**, run this from the repository root:
