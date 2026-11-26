@@ -12,8 +12,18 @@
     <label for="profile">Saved profile</label><select id="profile"></select>
     <button id="preview">Load plays</button>
     <p class="hint">Choose a current track or historical plays, then submit the selection.</p>
-    <div id="list"></div>
-    <button id="copy" class="primary" hidden>Scrobble selected</button>
+    <details id="manualPlays">
+      <summary>Paste plays</summary>
+      <p class="hint" id="pasteHelp">Paste the Last.fm Recent Tracks table as copied. Relative times like “4 hours ago” are estimated from when you paste. For exact times, use one Artist | Track | Timestamp per line (Unix seconds or an ISO date with a timezone). Previewing doesn’t scrobble.</p>
+      <label for="pastedPlays">Recent Tracks table or exact plays</label>
+      <textarea id="pastedPlays" rows="3" aria-describedby="pasteHelp" placeholder="Paste the copied table here"></textarea>
+      <button id="previewPaste" type="button">Preview pasted plays</button>
+    </details>
+    <div class="buttons">
+      <button id="copyAll" class="primary" hidden>Scrobble all</button>
+      <button id="copy" hidden>Scrobble selected</button>
+    </div>
+    <details id="playPreview" hidden><summary id="playCount">Preview</summary><div id="list"></div></details>
   </section>
   <section><h2>Twitch mirroring</h2><p id="mirror">No mapped channels open.</p></section>
   <section><h2>Identify audio</h2>

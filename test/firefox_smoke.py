@@ -10,7 +10,8 @@ with socket.socket() as port_probe:
     port_probe.bind(("127.0.0.1", 0))
     port = port_probe.getsockname()[1]
 p = subprocess.Popen([os.environ.get("GECKODRIVER", "geckodriver"), "--port", str(port), "--log",
-                      "error", "--allow-system-access"])
+                      "error", "--allow-system-access"],
+                     env={**os.environ, "MOZ_REMOTE_ALLOW_SYSTEM_ACCESS": "1"})
 sid=None
 def req(method,path,data=None):
     c=http.client.HTTPConnection('127.0.0.1',port,timeout=65)
@@ -54,6 +55,25 @@ def run():
         go(root+'/panel.html')
         assert js("return document.querySelector('#profile').value")=='example'
         assert js("return document.querySelector('#actions').hidden") is False
+        header = "Play\tAlbum\tLoved\tTrack name\tArtist name\tBuy\tOptions\tTimestamp"
+        clipboard = header + "\n" + "\n".join(
+            f"\nAlbum\nFixture doesn't love this track\nSong {i+1}\tArtist\nBuy\nMore\n4 hours ago"
+            for i in range(50)
+        )
+        js("""
+            document.querySelector('#manualPlays').open = true;
+            const text = document.querySelector('#pastedPlays');
+            text.value = arguments[0];
+            text.dispatchEvent(new Event('input', {bubbles:true}));
+            document.querySelector('#previewPaste').click();
+        """, clipboard)
+        assert js("""return [
+            document.querySelector('#playPreview').open,
+            document.querySelector('#copy').hidden,
+            document.querySelector('#copyAll').textContent,
+            document.querySelectorAll('#list .track').length
+        ]""") == [False, True, 'Scrobble all (50)', 50]
+        assert '(estimated)' in js("return document.querySelector('#list .track').textContent")
         h=ThreadingHTTPServer(('127.0.0.1',0),partial(SimpleHTTPRequestHandler,directory=tmp))
         Thread(target=h.serve_forever,daemon=True).start()
         (tmp/'page.html').write_text('<title>Audio fixture</title><audio src="tone.wav" autoplay loop controls></audio>')
@@ -69,7 +89,7 @@ def run():
           document.querySelector('audio').play().then(recordPlayer).then(x=>done({length:x.data?.length,type:x.type,error:x.error}), e=>done({error:String(e)}));
         """)
         assert clip.get('length',0)>10000 and clip['type'].startswith('audio/'), clip
-        print('Firefox: temporary add-on installed; settings saved and read by popup. Capture function recorded synthetic HTML audio locally. No live credentials or uploads.')
+        print('Firefox: temporary add-on installed; settings saved and read by popup; 50 raw pasted plays previewed without a submission. Capture function recorded synthetic HTML audio locally. No live credentials or uploads.')
 try:
     run()
 finally:

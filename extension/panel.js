@@ -5,7 +5,7 @@ const settings = new URLSearchParams(location.search).has("settings");
 const TWITCH = ["https://www.twitch.tv/*","https://twitch.tv/*"];
 const AUDD = {origins:["https://api.audd.io/*"]};
 const CLIP = {data_collection:["websiteContent"]};
-let state, previewRows = [], previewSource = "", match;
+let state, previewRows = [], previewSource = "", previewVersion = 0, match;
 const note = message => { $("status").textContent = message; };
 const profileUrl = user => "https://www.last.fm/user/" + encodeURIComponent(user);
 const twitchUrl = channel => "https://www.twitch.tv/" + encodeURIComponent(channel);
@@ -211,34 +211,72 @@ if (settings) {
   $("actions").hidden = false;
   bind("settings",() => browser.runtime.openOptionsPage());
   bind("recognitionSettings",() => browser.runtime.openOptionsPage());
-  $("profile").addEventListener("change",() => {
-    $("list").replaceChildren(); $("copy").hidden = true; previewRows = [];
+  function clearPreview() {
+    $("list").replaceChildren();
+    $("copy").hidden = $("copyAll").hidden = $("playPreview").hidden = true;
+    previewRows = [];
+    return ++previewVersion;
+  }
+  function showPlays(source, rows, {pasted = false} = {}) {
+    previewSource = source;
+    previewRows = rows;
+    $("copy").hidden = pasted || !rows.length;
+    $("copyAll").hidden = $("playPreview").hidden = !rows.length;
+    $("copyAll").textContent = `Scrobble all (${rows.length})`;
+    $("playCount").textContent = `Preview (${rows.length})`;
+    $("playPreview").open = !pasted;
+    if (!rows.length) return note("No recent plays found.");
+    rows.forEach((t,i) => {
+      const label = document.createElement(pasted ? "p" : "label");
+      label.className = "track";
+      if (!pasted) {
+        const check = document.createElement("input");
+        check.type = "checkbox"; check.value = i;
+        label.append(check);
+      }
+      line(label,t.artist + " — " + t.title + (t.now ? " · Now playing (submitted with the current time)" : " · " + new Date(t.ts*1000).toLocaleString() + (t.approximate ? " (estimated)" : "")),"span");
+      $("list").append(label);
+    });
+  }
+  $("profile").addEventListener("change",clearPreview);
+  let pasteTime;
+  $("pastedPlays").addEventListener("input",() => {
+    pasteTime = Math.floor(Date.now()/1000);
+    clearPreview();
   });
   bind("preview", async () => {
     const source = $("profile").value;
-    const {current,history} = await call("preview",{profile:source});
-    if ($("profile").value !== source) return;
-    previewSource = source;
-    previewRows = [...(current ? [current] : []), ...history];
-    $("list").replaceChildren();
-    $("copy").hidden = !previewRows.length;
-    if (!previewRows.length) return note("No recent plays found.");
-    previewRows.forEach((t,i) => {
-      const label = document.createElement("label");
-      label.className = "track";
-      const check = document.createElement("input");
-      check.type = "checkbox"; check.value = i;
-      label.append(check);
-      line(label,t.artist + " — " + t.title + (t.now ? " · Now playing (submitted with the current time)" : " · " + new Date(t.ts*1000).toLocaleString()),"span");
-      $("list").append(label);
-    });
+    const version = clearPreview();
+    try {
+      const {current,history} = await call("preview",{profile:source});
+      if (version === previewVersion) showPlays(source,[...(current ? [current] : []), ...history]);
+    } catch (error) {
+      if (version !== previewVersion) return;
+      $("manualPlays").open = true;
+      throw error;
+    }
   });
-  bind("copy", async () => {
-    const rows = [...$("list").querySelectorAll("input:checked")].map(x => previewRows[Number(x.value)]);
+  bind("previewPaste", () => {
+    clearPreview();
+    const now = Math.floor(Date.now()/1000);
+    const rows = Scrobble.parsePastedPlays($("pastedPlays").value, pasteTime ??= now);
+    const eligible = rows.filter(t => t.ts <= now && t.ts >= now - 14*86400);
+    if (!eligible.length) return note("No eligible plays. Use timestamps from the last 14 days, not future times.");
+    showPlays("",eligible,{pasted:true});
+    const estimates = eligible.some(t => t.approximate);
+    note((estimates ? "These times are estimates from the copied labels. Repeated tracks with the same estimated timestamp may be skipped. " : "") +
+      "Review the preview or click Scrobble all." +
+      (eligible.length < rows.length ? ` Skipped ${rows.length - eligible.length} old or future plays.` : ""));
+  });
+  async function submitPreview(rows, other) {
     if (!rows.length) throw Error("Select at least one play.");
-    const report = await call("submit",{rows,source:previewSource});
-    printReport(report);
-  });
+    $(other).disabled = true;
+    try { printReport(await call("submit",{rows,source:previewSource})); }
+    finally { $(other).disabled = false; }
+  }
+  bind("copy", () => submitPreview(
+    [...$("list").querySelectorAll("input:checked")].map(x => previewRows[Number(x.value)]),"copyAll"));
+  bind("copyAll", () => submitPreview(previewRows,"copy"));
   async function identifyTrack(autoScrobble) {
     $("match").replaceChildren(); $("scrobble").hidden = true; match = null;
     if (!state?.config.hasRecognition) {

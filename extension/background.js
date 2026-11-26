@@ -36,13 +36,21 @@ async function api(config, method, args = {}, opts = {}) {
       throw Error("Your Last.fm session expired. Reconnect in Settings.");
     }
     if (result.error === 14) throw Error("Approve access on Last.fm, then click Finish connecting.");
+    if (opts.explainError) {
+      let detail = typeof result.message === "string" ? result.message : "";
+      for (const sensitive of [config.apiKey, config.secret].filter(Boolean))
+        detail = detail.split(sensitive).join("[redacted]");
+      detail = detail.replace(/\b[a-f\d]{32,}\b/gi,"[redacted]").replace(/\s+/g," ").trim().slice(0,240);
+      throw Error(`Last.fm couldn’t load plays (HTTP ${response.status}, API error ${Number(result.error)}).` +
+        (detail ? " " + detail : "") + " You can use Paste plays below.");
+    }
     throw Error("Last.fm API error " + Number(result.error) + ".");
   }
   if (!response.ok) throw Error("Last.fm HTTP " + response.status + ".");
   return result;
 }
 
-async function recent(config, profile, {limit, from, to} = {}) {
+async function recent(config, profile, {limit, from, to, explainError = false} = {}) {
   const result = [];
   let current = null;
   let pages = 1;
@@ -50,7 +58,7 @@ async function recent(config, profile, {limit, from, to} = {}) {
   for (let page = 1; page <= pages && (limit == null || result.length < limit); page++) {
     const data = await api(config, "user.getRecentTracks", {
       user: profile, limit: perPage, page, ...(from ? {from} : {}), ...(to ? {to} : {})
-    });
+    }, {explainError});
     const feed = data.recenttracks;
     if (!Array.isArray(feed?.track)) throw Error("Last.fm did not return a track list.");
     pages = Number(feed["@attr"]?.totalPages ?? 1);
@@ -254,7 +262,7 @@ async function action(message) {
   }
   if (message.action === "preview") {
     if (!config.profiles?.includes(message.profile)) throw Error("Select a saved Last.fm profile.");
-    return recent(config, message.profile, {limit:config.limit || 50});
+    return recent(config, message.profile, {limit:config.limit || 50, explainError:true});
   }
   if (message.action === "submit") return submit(config, account, message.rows.map(row =>
     ({...row, ts: row.ts ?? seconds()})), {source:message.source || ""});

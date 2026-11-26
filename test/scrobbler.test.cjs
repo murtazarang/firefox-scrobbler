@@ -44,7 +44,7 @@ function harness({feed, result, config = {}, disconnected = false} = {}) {
       method === "auth.getToken" ? {token:"once"} :
       method === "auth.getSession" ? {session:{key:"session",name:"me"}} :
       result ? result(params) : {scrobbles:{scrobble:Object.keys(params).filter(k=>k.startsWith("artist[")).map(()=>({ignoredMessage:{code:"0"}}))}};
-    return {ok:true,json:async()=>data};
+    return {ok:!data.error,status:data.error === 8 ? 500 : 200,json:async()=>data};
   };
   const context = vm.createContext({browser,fetch,URL,URLSearchParams,AbortSignal,TextEncoder,Date:{now:()=>now*1000}});
   for (const path of model.background.scripts) vm.runInContext(readFileSync("extension/"+path,"utf8"),context);
@@ -162,4 +162,38 @@ test("opening the popup refreshes mapped Twitch tabs without writing and accepts
   assert.equal((await h.send("status")).data.mirrorState,"no-permission");
   assert.equal(h.alarms.size,0);
   assert.equal((await harness({disconnected:true}).send("status")).data.mirrorState,"disconnected");
+});
+
+test("manual preview shows HTTP and API detail without exposing credentials",async()=>{
+  const h = harness({feed:()=>({error:8,message:"Backend error for SENSITIVE. Please try again."}),config:{apiKey:"SENSITIVE"}});
+  const reply = await h.send("preview",{profile:"bob"});
+  assert.match(reply.error,/HTTP 500, API error 8/);
+  assert.match(reply.error,/Backend error for \[redacted\]/);
+  assert.doesNotMatch(reply.error,/SENSITIVE/);
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].opts.body,undefined);
+});
+
+test("copies an English Recent Tracks table verbatim, including repeated plays",()=>{
+  const header = "Play \tAlbum \tLoved \tTrack name \tArtist name \tBuy \tOptions \tTimestamp";
+  const tableRow = (play,album,loved,title,artist,time) =>
+    [play,album,loved,title,artist,"Buy","More",time].join("\n\t\n");
+  const aphex = tableRow("","Selected Ambient Works Volume II","VJRadio doesn't love this track","Untitled","Aphex Twin","4 hours ago");
+  const raw = [header,aphex,aphex,tableRow("Play track","Walking on","VJRadio loves this track","Alma Ata","The Ananda Shankar Experience","5 hours ago")].join("\n\t\n");
+  const plays = core.parsePastedPlays(raw,tick);
+  assert.equal(plays.length,3);
+  assert.deepEqual(plays[0],{artist:"Aphex Twin",title:"Untitled",album:"Selected Ambient Works Volume II",ts:tick-14400,approximate:true});
+  assert.deepEqual(plays[1],plays[0]);
+  assert.equal(plays[2].artist,"The Ananda Shankar Experience");
+  assert.equal(plays[2].ts,tick-18000);
+  assert.throws(()=>core.parsePastedPlays(raw.replace("5 hours ago","some time"),tick),/Play 3/);
+});
+
+test("pasted exact times accept seconds or a timezone and reject invented dates",()=>{
+  const raw = "Artist | Track | 2026-11-25T14:00:00-05:00\nSecond\tTrack\t1795614000";
+  const plays = core.parsePastedPlays(raw);
+  assert.equal(plays[0].ts, Date.parse("2026-11-25T19:00:00Z")/1000);
+  assert.equal(plays[1].ts,1795614000);
+  assert.throws(()=>core.parsePastedPlays("A | T | 2026-11-25T14:00:00"),/Line 1/);
+  assert.throws(()=>core.parsePastedPlays("A | T | 2026-02-30T14:00:00Z"),/Line 1/);
 });

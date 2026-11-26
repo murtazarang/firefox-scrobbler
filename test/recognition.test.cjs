@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {readFileSync} = require("node:fs");
 const vm = require("node:vm");
+const Scrobble = require("../extension/core.js");
 
 async function popup({account = "listener", result = {artist:"Artist", title:"Song"}} = {}) {
   class Element {
@@ -39,7 +40,7 @@ async function popup({account = "listener", result = {artist:"Artist", title:"So
   };
   const document = {getElementById:$,createElement:()=>new Element(),body:{classList:{add(){}}}};
   vm.runInNewContext(readFileSync("extension/panel.js","utf8"),{
-    document,browser,location:{search:""},URLSearchParams,AbortSignal,atob,Blob,FormData,
+    document,browser,location:{search:""},Scrobble,URLSearchParams,AbortSignal,atob,Blob,FormData,
     fetch:async()=>{ lookups++; return {ok:true,json:async()=>({status:"success",result})}; }
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -78,4 +79,23 @@ test("Identify & scrobble does not submit without a match, or record without a L
   await noAccount.$("identifyAndScrobble").click();
   assert.deepEqual(noAccount.counts(),[0,0]);
   assert.match(noAccount.$("status").textContent,/Connect your Last.fm/);
+});
+
+test("pasting plays shows a compact review and submits all only after a separate click",async()=>{
+  const p = await popup();
+  const section = p.$("pastedPlays");
+  section.value = Array.from({length:50}, (_,i)=>`Artist | Track ${i+1} | ${Math.floor(Date.now()/1000)-i-90}`).join("\n");
+  section.listeners.input();
+  await p.$("previewPaste").click();
+  assert.equal(p.calls.length,0);
+  assert.equal(p.$("copy").hidden,true);
+  assert.equal(p.$("playPreview").open,false);
+  assert.equal(p.$("copyAll").textContent,"Scrobble all (50)");
+  await p.$("copyAll").click();
+  assert.equal(p.calls.length,1);
+  assert.equal(p.calls[0].action,"submit");
+  assert.equal(p.calls[0].rows.length,50);
+  assert.equal(p.calls[0].rows[49].title,"Track 50");
+  section.listeners.input();
+  assert.equal(p.$("copyAll").hidden,true);
 });

@@ -4,7 +4,7 @@ A desktop Firefox extension for three separate ways to scrobble to your Last.fm 
 
 | Action | When it runs | What it uses |
 | --- | --- | --- |
-| Copy Last.fm plays | After you choose a profile, select plays and click **Scrobble selected** | The source profile's public Recent Tracks feed |
+| Copy Last.fm plays | After you preview plays and click **Scrobble all** or **Scrobble selected** | The source profile's public Recent Tracks feed |
 | Twitch mirroring | In the background while a mapped channel page is open | The paired Last.fm profile's new completed plays; Twitch tab focus, mute, pause, and playback state do not matter |
 | Identify this tab | Only on click: **Identify this tab** previews a match; **Identify & scrobble** submits it directly | A short clip of the active tab's media player, sent to AudD |
 
@@ -20,6 +20,7 @@ Temporary installation lasts until Firefox restarts. For a permanent install on 
 
 ## Behavior and limits
 
+- If Load plays fails, expand **Paste plays**. Copy the English Last.fm Recent Tracks table directly, without reformatting. Relative times such as “4 hours ago” are estimates relative to when you paste; same-track plays that share an estimated timestamp can be skipped as duplicates. For exact times, paste or enter one play per line as `Artist | Track | Timestamp` (or tab-separated). Use the original timestamp as Unix seconds or an ISO date and time with a timezone, for example `2026-11-25T14:00:00Z`. Click **Preview pasted plays** to check the count, expand the list if you want to review it, then click **Scrobble all**. No profile page is scraped.
 - Manual copying makes no write until you submit the selection. Historical plays retain their timestamps; the extension skips entries older than 14 days rather than dating them today. Last.fm applies its own rules and can reject individual entries or limit daily submissions. A manual **Now Playing** copy uses the time you submit it; the feed does not supply a historical timestamp for that entry.
 - Twitch mappings start when a matching channel page is open. The add-on checks for new completed plays about once a minute, stops after the last matching tab closes or navigates away, and does not backfill plays from before that window. Only exact Twitch channel pages match, not VOD or clip URLs. Multiple tabs mapped to the same source share one mirror. No listening-time check or audio recognition runs in mirroring mode. Last.fm positions scrobbling as a record of your own listening; mirrored entries can affect your charts.
 - An extension-local ledger prevents repeated submissions of the same artist/title/timestamp to the same destination. After a lost or ambiguous response, check your Last.fm history before attempting a manual correction. The ledger is not a scan of your entire destination history and cannot prevent duplicates submitted by other apps.
