@@ -1,6 +1,6 @@
 # firefox-scrobbler
 
-A desktop Firefox extension for three separate ways to scrobble to your Last.fm account. The minimum version is Firefox 161, the November 24, 2026 stable release.
+A desktop Firefox extension for three separate ways to scrobble to your Last.fm account. Targets desktop Firefox, including the November 2026 release. There is no explicit minimum Firefox version in the manifest. Audio recognition uses standard media-element capture when available, falls back to Firefox’s older prefixed method, and still requires Firefox’s audio-sharing consent control.
 
 | Action | When it runs | What it uses |
 | --- | --- | --- |

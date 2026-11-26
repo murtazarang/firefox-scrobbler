@@ -94,7 +94,9 @@ function recordPlayer() {
       resolve(result);
     }
     try {
-      source = player.captureStream();
+      const capture = player.captureStream || player.mozCaptureStream;
+      if (!capture) return finish({error:"This Firefox version cannot capture audio from media elements."});
+      source = capture.call(player);
       const audio = source.getAudioTracks().filter(t => t.readyState === "live" && !t.muted);
       if (!audio.length) return finish({error:"This player has no capturable audio. It may be protected or embedded."});
       const mimeType = ["audio/webm;codecs=opus","audio/ogg;codecs=opus"]
@@ -191,6 +193,7 @@ if (settings) {
     $("match").replaceChildren(); $("scrobble").hidden = true; match = null;
     // Consent prompts close a Firefox toolbar popup. Grant each once, then reopen.
     if (!state?.config.hasRecognition) throw Error("Save an AudD token in Settings first.");
+    if (state.clipConsent === null) throw Error("This Firefox build does not expose the audio-sharing consent control.");
     if (!state.auddOrigin || !state.clipConsent) {
       const needed = !state.auddOrigin ? AUDD : CLIP;
       const allowed = await browser.permissions.request(needed);
@@ -227,7 +230,8 @@ if (settings) {
   bind("scrobble",async () => { if (match) printReport(await call("submit",{rows:[match]})); });
   async function updateCapturePermissions() {
     state.auddOrigin = await browser.permissions.contains(AUDD);
-    state.clipConsent = await browser.permissions.contains(CLIP);
+    try { state.clipConsent = await browser.permissions.contains(CLIP); }
+    catch { state.clipConsent = null; }
   }
   refresh().then(updateCapturePermissions).catch(e => note(e.message));
 }
