@@ -4,7 +4,15 @@ This is a Worker and one D1 database, not a Pages app. The Firefox build on this
 
 ## One-time Cloudflare setup
 
-1. From **Workers & Pages**, select `stream-scrobbler` → **Access** and verify **All traffic** is enabled. Leave it enabled.
+1. Protect only this Worker's production and preview URLs during initial deployment:
+   1. In the Cloudflare account dashboard sidebar, go to **Build → Compute → Workers & Pages**.
+   2. Open `stream-scrobbler` and click the **Access** tab, immediately left of **Settings**. Do not use the account-wide **Protect all Workers** control.
+   3. If the Worker is not already protected, click **Protect this Worker behind Access**.
+   4. Choose **All traffic**, not **Previews only**, so the production `workers.dev` URL is protected.
+   5. Under **Authentication policy**, choose **Cloudflare account** to allow members of this Cloudflare account. Leave the session duration at its default.
+   6. Click **Apply Access**. If the Worker is already protected, verify the existing scope and policy instead of adding a duplicate. Stop if an existing policy needs to be replaced.
+
+   This is a browser sign-in policy for requests to the Worker, separate from the deployment token in the next step. [Cloudflare's Protect one Worker instructions](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#protect-one-worker)
 2. In **Workers & Pages → stream-scrobbler → Settings → Builds**, find **API token for external CI/CD** and click **Create token**. It opens **Account API tokens → Create a token** with the Worker policy ready to edit. If opening [Account API tokens directly](https://dash.cloudflare.com/?to=%2F%3Aaccount%2Fapi-tokens) instead, select the same account, click **Create Token**, then use **Start from scratch** to open the first policy.
 3. Fill in **Token name** with `stream-scrobbler-setup`. In the first **Edit policy** block:
    - Set the scope to **Specified Workers**. Use **Select Workers…** to select only `stream-scrobbler`. The placeholder alone means no Worker is selected.
